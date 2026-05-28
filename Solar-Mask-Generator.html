@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Solar Mask Generator</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow:wght@300;600&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --red:    #ff2d2d;
+    --amber:  #ffb800;
+    --green:  #00e676;
+    --bg:     #0a0a0a;
+    --glass:  rgba(0,0,0,0.55);
+    --mono:   'Share Tech Mono', monospace;
+    --sans:   'Barlow', sans-serif;
+  }
+
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+
+  /* ── VIDEO LAYER ─────────────────────────────────────────────────────── */
+  #video {
+    position: fixed; inset: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    z-index: 0;
+  }
+
+  /* ── RETICLE ─────────────────────────────────────────────────────────── */
+  #reticle {
+    position: fixed; inset: 0;
+    z-index: 10;
+    pointer-events: none;
+  }
+  #reticle svg { width: 100%; height: 100%; }
+
+  /* ── HUD OVERLAY ─────────────────────────────────────────────────────── */
+  #hud {
+    position: fixed; inset: 0;
+    z-index: 20;
+    pointer-events: none;
+    display: flex; flex-direction: column;
+    justify-content: space-between;
+  }
+
+  /* Top bar */
+  #top-bar {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    padding: 14px 16px 0;
+  }
+
+  .readout {
+    background: var(--glass);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,184,0,0.35);
+    border-radius: 8px;
+    padding: 6px 14px;
+    display: flex; flex-direction: column; align-items: center; gap: 1px;
+  }
+  .readout-label {
+    font: 300 9px/1 var(--sans);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: rgba(255,184,0,0.7);
+  }
+  .readout-value {
+    font: 600 28px/1 var(--mono);
+    color: var(--amber);
+    text-shadow: 0 0 18px rgba(255,184,0,0.5);
+    letter-spacing: 0.05em;
+  }
+  .readout-value span { font-size: 16px; opacity: 0.7; }
+
+  /* Compass rose */
+  #compass-wrap {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+  }
+  #compass {
+    width: 70px; height: 70px;
+    background: var(--glass);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,184,0,0.3);
+    border-radius: 50%;
+    position: relative;
+    transition: transform 0.15s ease-out;
+  }
+  .compass-label {
+    position: absolute;
+    font: 600 9px/1 var(--mono);
+    color: var(--amber);
+  }
+  .compass-label.N { top: 4px; left: 50%; transform: translateX(-50%); }
+  .compass-label.S { bottom: 4px; left: 50%; transform: translateX(-50%); }
+  .compass-label.E { right: 5px; top: 50%; transform: translateY(-50%); }
+  .compass-label.W { left: 5px; top: 50%; transform: translateY(-50%); }
+  #compass-needle {
+    position: absolute; top: 50%; left: 50%;
+    width: 2px; height: 52%;
+    transform-origin: bottom center;
+    transform: translateX(-50%) translateY(-100%);
+  }
+  #compass-needle::before {
+    content: '';
+    position: absolute; top: 0; left: -3px;
+    width: 8px; height: 60%;
+    background: var(--red);
+    clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+  }
+  #compass-needle::after {
+    content: '';
+    position: absolute; bottom: 0; left: -3px;
+    width: 8px; height: 40%;
+    background: #888;
+    clip-path: polygon(0% 0%, 100% 0%, 50% 100%);
+  }
+
+  /* Bottom controls */
+  #bottom-bar {
+    padding: 0 16px 24px;
+    display: flex; flex-direction: column; gap: 12px;
+    pointer-events: all;
+  }
+
+  /* Point counter + azimuth strip */
+  #az-strip {
+    display: flex; align-items: center; gap: 10px;
+  }
+  #point-count {
+    background: var(--glass);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,184,0,0.3);
+    border-radius: 8px;
+    padding: 6px 12px;
+    font: 600 13px/1 var(--mono);
+    color: var(--amber);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  #az-bar {
+    flex: 1;
+    background: var(--glass);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,184,0,0.2);
+    border-radius: 8px;
+    padding: 6px 10px;
+    overflow: hidden;
+    font: 600 11px/1.4 var(--mono);
+    color: rgba(255,184,0,0.6);
+    font-size: 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Action buttons */
+  #btn-row {
+    display: flex; gap: 10px;
+  }
+
+  #btn-capture {
+    flex: 2;
+    height: 58px;
+    background: rgba(255,45,45,0.15);
+    border: 2px solid var(--red);
+    border-radius: 14px;
+    color: var(--red);
+    font: 600 14px/1 var(--sans);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    transition: background 0.1s, transform 0.08s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #btn-capture:active {
+    background: rgba(255,45,45,0.35);
+    transform: scale(0.97);
+  }
+  #btn-capture svg { width: 20px; height: 20px; flex-shrink: 0; }
+
+  #btn-export {
+    flex: 1;
+    height: 58px;
+    background: rgba(0,230,118,0.12);
+    border: 2px solid var(--green);
+    border-radius: 14px;
+    color: var(--green);
+    font: 600 13px/1 var(--sans);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    transition: background 0.1s, transform 0.08s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #btn-export:active {
+    background: rgba(0,230,118,0.25);
+    transform: scale(0.97);
+  }
+  #btn-export svg { width: 18px; height: 18px; flex-shrink: 0; }
+
+  #btn-reset {
+    width: 58px; height: 58px;
+    background: rgba(255,255,255,0.06);
+    border: 2px solid rgba(255,255,255,0.25);
+    border-radius: 14px;
+    color: rgba(255,255,255,0.5);
+    font: 600 11px/1 var(--sans);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 3px;
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.1s;
+  }
+  #btn-reset:active { background: rgba(255,255,255,0.15); }
+  #btn-reset svg { width: 18px; height: 18px; }
+
+  /* Flash feedback */
+  #flash {
+    position: fixed; inset: 0; z-index: 100;
+    background: rgba(255,255,255,0.25);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.05s;
+  }
+  #flash.on { opacity: 1; }
+
+  /* Permission screen */
+  #perm-screen {
+    position: fixed; inset: 0; z-index: 200;
+    background: var(--bg);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 24px; padding: 32px;
+    text-align: center;
+  }
+  #perm-screen h1 {
+    font: 600 24px/1.2 var(--sans);
+    color: var(--amber);
+    letter-spacing: 0.05em;
+  }
+  #perm-screen p {
+    font: 300 14px/1.6 var(--sans);
+    color: rgba(255,255,255,0.6);
+    max-width: 280px;
+  }
+  #btn-start {
+    padding: 14px 36px;
+    background: var(--amber);
+    border: none; border-radius: 12px;
+    color: #000;
+    font: 600 15px/1 var(--sans);
+    letter-spacing: 0.06em;
+    cursor: pointer;
+    text-transform: uppercase;
+  }
+
+  /* Points list modal */
+  #modal {
+    position: fixed; inset: 0; z-index: 150;
+    background: rgba(0,0,0,0.88);
+    display: none; flex-direction: column;
+    padding: 24px 16px;
+    gap: 12px;
+    overflow-y: auto;
+  }
+  #modal.open { display: flex; }
+  #modal h2 {
+    font: 600 16px/1 var(--mono);
+    color: var(--amber);
+    letter-spacing: 0.08em;
+  }
+  #points-table {
+    border-collapse: collapse;
+    width: 100%;
+    font: 13px/1.6 var(--mono);
+    color: rgba(255,255,255,0.85);
+  }
+  #points-table th {
+    text-align: left;
+    color: var(--amber);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    border-bottom: 1px solid rgba(255,184,0,0.3);
+    padding: 4px 8px;
+  }
+  #points-table td {
+    padding: 4px 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  #points-table tr:last-child td { border: none; }
+  .del-btn {
+    color: var(--red); cursor: pointer; font-size: 16px;
+    background: none; border: none; padding: 0 4px;
+  }
+  #modal-btns { display: flex; gap: 10px; margin-top: 8px; }
+  .modal-btn {
+    flex: 1; padding: 12px;
+    border-radius: 10px;
+    border: 1.5px solid;
+    font: 600 13px/1 var(--sans);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+  .modal-btn.close { border-color: rgba(255,255,255,0.3); color: #fff; background: transparent; }
+  .modal-btn.dl { border-color: var(--green); color: var(--green); background: rgba(0,230,118,0.1); }
+</style>
+</head>
+<body>
+
+<video id="video" autoplay playsinline muted></video>
+
+<!-- Reticle SVG -->
+<div id="reticle">
+  <svg viewBox="0 0 100 100" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+    <!-- Cross lines -->
+    <line x1="50" y1="0" x2="50" y2="100" stroke="#ff2d2d" stroke-width="0.15" opacity="0.8"/>
+    <line x1="0" y1="50" x2="100" y2="50" stroke="#ff2d2d" stroke-width="0.15" opacity="0.8"/>
+    <!-- Center circle -->
+    <circle cx="50" cy="50" r="7" fill="none" stroke="#ff2d2d" stroke-width="0.4" opacity="0.9"/>
+    <!-- Corner brackets -->
+    <path d="M2 12 L2 2 L12 2" fill="none" stroke="#ff2d2d" stroke-width="0.4" opacity="0.6"/>
+    <path d="M88 2 L98 2 L98 12" fill="none" stroke="#ff2d2d" stroke-width="0.4" opacity="0.6"/>
+    <path d="M2 88 L2 98 L12 98" fill="none" stroke="#ff2d2d" stroke-width="0.4" opacity="0.6"/>
+    <path d="M98 88 L98 98 L88 98" fill="none" stroke="#ff2d2d" stroke-width="0.4" opacity="0.6"/>
+    <!-- Horizon line indicator -->
+    <line x1="30" y1="50" x2="40" y2="50" stroke="#ffb800" stroke-width="0.5" opacity="0.5"/>
+    <line x1="60" y1="50" x2="70" y2="50" stroke="#ffb800" stroke-width="0.5" opacity="0.5"/>
+    <!-- Center dot -->
+    <circle cx="50" cy="50" r="0.6" fill="#ff2d2d"/>
+  </svg>
+</div>
+
+<!-- HUD -->
+<div id="hud">
+  <div id="top-bar">
+    <!-- Compass -->
+    <div id="compass-wrap">
+      <div id="compass">
+        <span class="compass-label N">N</span>
+        <span class="compass-label S">S</span>
+        <span class="compass-label E">E</span>
+        <span class="compass-label W">W</span>
+        <div id="compass-needle"></div>
+      </div>
+    </div>
+
+    <!-- Azimuth readout -->
+    <div class="readout">
+      <div class="readout-label">Azimut</div>
+      <div class="readout-value" id="az-val">---<span>°</span></div>
+    </div>
+
+    <!-- Elevation readout -->
+    <div class="readout">
+      <div class="readout-label">Élévation</div>
+      <div class="readout-value" id="el-val">--<span>°</span></div>
+    </div>
+  </div>
+
+  <div id="bottom-bar">
+    <div id="az-strip">
+      <div id="point-count">0 pts</div>
+      <div id="az-bar">— Aucun point enregistré —</div>
+    </div>
+    <div id="btn-row">
+      <button id="btn-capture">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="9" stroke-dasharray="2 2"/>
+        </svg>
+        Enregistrer
+      </button>
+      <button id="btn-export">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M12 3v12M7 14l5 5 5-5M5 20h14"/>
+        </svg>
+        CSV
+      </button>
+      <button id="btn-reset">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M3 12a9 9 0 1 0 9-9 9 9 0 0 0-6.36 2.64L3 8"/><path d="M3 3v5h5"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<div id="flash"></div>
+
+<!-- Permission screen -->
+<div id="perm-screen">
+  <h1>Solar Mask Generator</h1>
+  <p>Relevé de masque solaire — Accès à la caméra et au gyroscope requis.</p>
+  <button id="btn-start">Démarrer</button>
+</div>
+
+<!-- Points modal -->
+<div id="modal">
+  <h2>Points enregistrés</h2>
+  <table id="points-table">
+    <thead>
+      <tr><th>#</th><th>Azimut</th><th>Élévation</th><th></th></tr>
+    </thead>
+    <tbody id="points-tbody"></tbody>
+  </table>
+  <div id="modal-btns">
+    <button class="modal-btn close" id="btn-close-modal">Fermer</button>
+    <button class="modal-btn dl" id="btn-dl-csv">⬇ Télécharger CSV</button>
+  </div>
+</div>
+
+<script>
+// ── State ───────────────────────────────────────────────────────────────────
+let azimuth   = 0;
+let elevation = 0;
+let points    = [];   // [{az, el}]
+let sensorActive = false;
+
+// ── DOM refs ────────────────────────────────────────────────────────────────
+const video       = document.getElementById('video');
+const azVal       = document.getElementById('az-val');
+const elVal       = document.getElementById('el-val');
+const compass     = document.getElementById('compass');
+const needle      = document.getElementById('compass-needle');
+const pointCount  = document.getElementById('point-count');
+const azBar       = document.getElementById('az-bar');
+const flash       = document.getElementById('flash');
+const permScreen  = document.getElementById('perm-screen');
+const modal       = document.getElementById('modal');
+const tbody       = document.getElementById('points-tbody');
+
+// ── Format helpers ──────────────────────────────────────────────────────────
+const fmt = (v, d=1) => v.toFixed(d);
+
+function updateHUD() {
+  azVal.innerHTML = `${fmt(azimuth,1)}<span>°</span>`;
+  elVal.innerHTML = `${fmt(elevation,1)}<span>°</span>`;
+  // Compass: rotate so that the needle always points North
+  // azimuth = direction phone is facing, so rotate dial by -azimuth
+  compass.style.transform = `rotate(${-azimuth}deg)`;
+}
+
+function updateBar() {
+  pointCount.textContent = `${points.length} pt${points.length !== 1 ? 's' : ''}`;
+  if (points.length === 0) {
+    azBar.textContent = '— Aucun point enregistré —';
+  } else {
+    const last = points[points.length - 1];
+    azBar.textContent = `Dernier : Az ${fmt(last.az)}° / Él ${fmt(last.el)}°`;
+  }
+}
+
+// ── Camera ──────────────────────────────────────────────────────────────────
+async function startCamera() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
+      audio: false
+    });
+    video.srcObject = stream;
+  } catch(e) {
+    console.warn('Camera error:', e);
+  }
+}
+
+// ── Sensors ─────────────────────────────────────────────────────────────────
+function startSensors() {
+  // DeviceOrientationEvent — gives alpha (compass), beta (tilt front/back), gamma (tilt left/right)
+  const handler = (e) => {
+    if (e.webkitCompassHeading !== undefined) {
+      // iOS: webkitCompassHeading is the magnetic heading directly (0–360)
+      azimuth = e.webkitCompassHeading;
+    } else if (e.alpha !== null) {
+      // Android: alpha is rotation around Z, need to invert for compass heading
+      azimuth = (360 - e.alpha) % 360;
+    }
+
+    // Elevation: beta is tilt of phone
+    // When phone is held upright (portrait) looking at horizon: beta ≈ 90
+    // elevation = beta - 90 (0 = horizontal, positive = up, negative = down)
+    if (e.beta !== null) {
+      elevation = e.beta - 90;
+    }
+
+    updateHUD();
+    sensorActive = true;
+  };
+
+  if (typeof DeviceOrientationEvent !== 'undefined' &&
+      typeof DeviceOrientationEvent.requestPermission === 'function') {
+    // iOS 13+ — must request permission
+    DeviceOrientationEvent.requestPermission()
+      .then(state => { if (state === 'granted') window.addEventListener('deviceorientation', handler); })
+      .catch(console.error);
+  } else {
+    window.addEventListener('deviceorientation', handler);
+  }
+}
+
+// ── Capture ──────────────────────────────────────────────────────────────────
+document.getElementById('btn-capture').addEventListener('click', () => {
+  const az = parseFloat(azimuth.toFixed(1));
+  const el = parseFloat(elevation.toFixed(1));
+  points.push({ az, el });
+  updateBar();
+
+  // Flash feedback
+  flash.classList.add('on');
+  setTimeout(() => flash.classList.remove('on'), 120);
+});
+
+// ── Export CSV ───────────────────────────────────────────────────────────────
+function generateCSV() {
+  // Sort by azimuth
+  const sorted = [...points].sort((a, b) => a.az - b.az);
+  const header = 'azimuth,elevation\n';
+  const rows   = sorted.map(p => `${p.az},${p.el}`).join('\n');
+  return header + rows;
+}
+
+function downloadCSV() {
+  if (points.length === 0) return;
+  const csv  = generateCSV();
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `horizon_mask_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+document.getElementById('btn-export').addEventListener('click', () => {
+  if (points.length === 0) return;
+  renderModal();
+  modal.classList.add('open');
+});
+
+document.getElementById('btn-dl-csv').addEventListener('click', downloadCSV);
+document.getElementById('btn-close-modal').addEventListener('click', () => modal.classList.remove('open'));
+
+// ── Reset ────────────────────────────────────────────────────────────────────
+document.getElementById('btn-reset').addEventListener('click', () => {
+  if (points.length === 0) return;
+  if (confirm(`Supprimer les ${points.length} point(s) enregistrés ?`)) {
+    points = [];
+    updateBar();
+  }
+});
+
+// ── Modal table ──────────────────────────────────────────────────────────────
+function renderModal() {
+  const sorted = [...points].sort((a, b) => a.az - b.az);
+  tbody.innerHTML = sorted.map((p, i) => `
+    <tr>
+      <td>${i+1}</td>
+      <td>${fmt(p.az)}°</td>
+      <td>${fmt(p.el)}°</td>
+      <td><button class="del-btn" data-az="${p.az}" data-el="${p.el}">✕</button></td>
+    </tr>`).join('');
+
+  tbody.querySelectorAll('.del-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const az = parseFloat(btn.dataset.az);
+      const el = parseFloat(btn.dataset.el);
+      const idx = points.findIndex(p => p.az === az && p.el === el);
+      if (idx !== -1) points.splice(idx, 1);
+      renderModal();
+      updateBar();
+    });
+  });
+}
+
+// ── Start ────────────────────────────────────────────────────────────────────
+document.getElementById('btn-start').addEventListener('click', async () => {
+  permScreen.style.display = 'none';
+  await startCamera();
+  startSensors();
+  // Fallback: if no sensor, show 0° values
+  updateHUD();
+  updateBar();
+});
+</script>
+</body>
+</html>
