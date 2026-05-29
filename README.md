@@ -1,6 +1,6 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20iOS-lightgrey)](https://github.com/38decibel/Solar-Mask-Generator)
-[![No install](https://img.shields.io/badge/No%20install-Single%20HTML%20file-orange)](solar-mask-generator.html)
+[![No install](https://img.shields.io/badge/No%20install-Single%20HTML%20file-orange)](index.html)
 
 # Solar Mask Generator
 
@@ -28,10 +28,7 @@ Solar Mask Generator is a free, open-source alternative that runs directly in yo
 ## Usage
 
 ### 1 — Open the app
-
-Transfer `solar-mask-generator.html` to your phone and open it in:
-- **Chrome** on Android
-- **Safari** on iOS
+Go to [Solar Mask Generator](https://38decibel.github.io/Solar-Mask-Generator/) with your smartphone (Android or iOS).
 
 > You can also add it to your home screen for a full-screen, app-like experience:
 > - **Android**: Chrome → ⋮ → *Add to Home Screen*
