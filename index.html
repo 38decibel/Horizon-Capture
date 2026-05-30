@@ -11,9 +11,9 @@
 
   :root {
     --red:    #ff2d2d;
-    --cyan:   #00e5ff;
     --amber:  #ffb800;
     --green:  #00e676;
+    --cyan:   #00E5FF;
     --bg:     #0a0a0a;
     --glass:  rgba(0,0,0,0.55);
     --mono:   'Share Tech Mono', monospace;
@@ -164,10 +164,10 @@
   #btn-capture {
     flex: 2;
     height: 58px;
-    background: rgba(0,229,255,0.15);
-    border: 2px solid var(--red);
+    background: rgba(0,229,255,0.12);
+    border: 2px solid var(--cyan);
     border-radius: 14px;
-    color: var(--red);
+    color: var(--cyan);
     font: 600 14px/1 var(--sans);
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -177,7 +177,7 @@
     -webkit-tap-highlight-color: transparent;
   }
   #btn-capture:active {
-    background: rgba(0,229,255,0.35);
+    background: rgba(0,229,255,0.28);
     transform: scale(0.97);
   }
   #btn-capture svg { width: 20px; height: 20px; flex-shrink: 0; }
@@ -250,7 +250,7 @@
   }
   #btn-start {
     padding: 14px 36px;
-    background: var(--amber);
+    background: var(--cyan);
     border: none; border-radius: 12px;
     color: #000;
     font: 600 15px/1 var(--sans);
@@ -469,37 +469,22 @@ async function startCamera() {
 }
 
 // ── Sensors ─────────────────────────────────────────────────────────────────
-function startSensors() {
-  // DeviceOrientationEvent — gives alpha (compass), beta (tilt front/back), gamma (tilt left/right)
-  const handler = (e) => {
-    if (e.webkitCompassHeading !== undefined) {
-      // iOS: webkitCompassHeading is the magnetic heading directly (0–360)
-      azimuth = e.webkitCompassHeading;
-    } else if (e.alpha !== null) {
-      // Android: alpha is rotation around Z, need to invert for compass heading
-      azimuth = (360 - e.alpha) % 360;
-    }
-
-    // Elevation: beta is tilt of phone
-    // When phone is held upright (portrait) looking at horizon: beta ≈ 90
-    // elevation = beta - 90 (0 = horizontal, positive = up, negative = down)
-    if (e.beta !== null) {
-      elevation = e.beta - 90;
-    }
-
-    updateHUD();
-    sensorActive = true;
-  };
-
-  if (typeof DeviceOrientationEvent !== 'undefined' &&
-      typeof DeviceOrientationEvent.requestPermission === 'function') {
-    // iOS 13+ — must request permission
-    DeviceOrientationEvent.requestPermission()
-      .then(state => { if (state === 'granted') window.addEventListener('deviceorientation', handler); })
-      .catch(console.error);
-  } else {
-    window.addEventListener('deviceorientation', handler);
+function handleOrientation(e) {
+  if (e.webkitCompassHeading !== undefined && e.webkitCompassHeading !== null) {
+    azimuth = e.webkitCompassHeading;
+  } else if (e.alpha !== null) {
+    azimuth = (360 - e.alpha) % 360;
   }
+  if (e.beta !== null) {
+    elevation = e.beta - 90;
+  }
+  updateHUD();
+  sensorActive = true;
+}
+
+function attachOrientationHandler() {
+  window.addEventListener('deviceorientationabsolute', handleOrientation, true);
+  window.addEventListener('deviceorientation', handleOrientation, true);
 }
 
 // ── Capture ──────────────────────────────────────────────────────────────────
@@ -580,8 +565,26 @@ function renderModal() {
 document.getElementById('btn-start').addEventListener('click', async () => {
   permScreen.style.display = 'none';
   await startCamera();
-  startSensors();
-  // Fallback: if no sensor, show 0° values
+
+  // iOS 13+: requestPermission MUST be called synchronously inside a user gesture handler
+  if (typeof DeviceOrientationEvent !== 'undefined' &&
+      typeof DeviceOrientationEvent.requestPermission === 'function') {
+    try {
+      const state = await DeviceOrientationEvent.requestPermission();
+      if (state === 'granted') {
+        attachOrientationHandler();
+      } else {
+        alert("Permission gyroscope refusée. L'azimut et l'élévation ne seront pas disponibles.");
+      }
+    } catch(err) {
+      console.warn('DeviceOrientation permission error:', err);
+      attachOrientationHandler(); // try anyway
+    }
+  } else {
+    // Android / desktop — no permission needed
+    attachOrientationHandler();
+  }
+
   updateHUD();
   updateBar();
 });
